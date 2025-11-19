@@ -328,11 +328,10 @@ export default function App() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-black mb-2">
-            French Audio Trainer
+            French Audio Trainer - Learn French with audio!
           </h1>
           <p className="text-slate-600">
-            Create modules, lessons, and practice French
-            vocabulary
+            Create modules, lessons, and practice French vocabulary with audio!
           </p>
         </div>
 
@@ -812,7 +811,7 @@ export default function App() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => {
                 if (deleteDialog.type === "module") {
                   deleteModule(deleteDialog.id);

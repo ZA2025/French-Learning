@@ -328,7 +328,7 @@ export default function App() {
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-black mb-2">
-            French Learning App
+            French Audio Trainer
           </h1>
           <p className="text-slate-600">
             Create modules, lessons, and practice French

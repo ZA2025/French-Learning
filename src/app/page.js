@@ -173,17 +173,29 @@ export default function App() {
 
   const translateText = async (text) => {
     try {
-      const response = await fetch(
-        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
-          text,
-        )}&langpair=fr|en`,
-      );
+      const response = await fetch("/api/translate", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      });
       const data = await response.json();
-      return data.responseData?.translatedText || text;
+      return data.translation;
+
     } catch (error) {
       console.error("Translation error:", error);
       return text;
     }
+    // try {
+    //   const response = await fetch(
+    //     `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+    //       text,
+    //     )}&langpair=fr|en`,
+    //   );
+    //   const data = await response.json();
+    //   return data.responseData?.translatedText || text;
+    // } catch (error) {
+    //   console.error("Translation error:", error);
+    //   return text;
+    // }
   };
 
   const addEntry = async () => {

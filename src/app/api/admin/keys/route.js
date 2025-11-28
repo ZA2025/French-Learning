@@ -2,26 +2,28 @@ import { createClient } from "redis";
 
 export async function GET(req) {
   try {
-    // Security check: Only allow in development or with admin secret
+    // Security check: Require admin secret in production, allow open access in development
     const adminSecret = process.env.ADMIN_SECRET;
     const isDevelopment = process.env.NODE_ENV === "development";
     
-    // Check for admin secret in Authorization header or query param
-    const authHeader = req.headers.get("authorization");
-    const url = new URL(req.url);
-    const secretParam = url.searchParams.get("secret");
-    
-    const providedSecret = authHeader?.replace("Bearer ", "") || secretParam;
-    
-    // Block access if not in development and no valid secret provided
-    if (!isDevelopment && (!adminSecret || providedSecret !== adminSecret)) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+    // In development, allow access without password
+    if (!isDevelopment) {
+      // Production mode: require password
+      const authHeader = req.headers.get("authorization");
+      const url = new URL(req.url);
+      const secretParam = url.searchParams.get("secret");
+      
+      const providedSecret = authHeader?.replace("Bearer ", "") || secretParam;
+      
+      if (!adminSecret || providedSecret !== adminSecret) {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
     }
 
     const redisUrl = process.env.REDIS_URL;

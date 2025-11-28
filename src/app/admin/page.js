@@ -6,16 +6,31 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Toaster } from "../components/ui/sonner";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 export default function AdminPage() {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedKey, setSelectedKey] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [storedSecret, setStoredSecret] = useState("");
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    key: null,
+    name: null,
+  });
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -24,7 +39,7 @@ export default function AdminPage() {
       const response = await fetch(`/api/admin/keys?secret=${encodeURIComponent(password)}`);
       if (response.ok) {
         setIsAuthenticated(true);
-        setStoredSecret(password); // Store the secret for future requests
+        setStoredSecret(password);
         const data = await response.json();
         setKeys(data.keys || []);
         toast.success("Authenticated successfully");
@@ -40,7 +55,6 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    // Try to authenticate automatically in development
     if (typeof window !== "undefined") {
       fetchKeys();
     }
@@ -56,7 +70,6 @@ export default function AdminPage() {
       
       const response = await fetch(url);
       if (response.status === 401) {
-        // Not authenticated - show login form
         setIsAuthenticated(false);
         setLoading(false);
         return;
@@ -78,17 +91,87 @@ export default function AdminPage() {
     }
   };
 
-  const groupedKeys = {
-    codes: keys.filter((k) => k.key.startsWith("code:")),
-    profiles: keys.filter((k) => k.key.startsWith("profile:")),
-    progress: keys.filter((k) => k.key.startsWith("progress:")),
-    other: keys.filter(
-      (k) =>
-        !k.key.startsWith("code:") &&
-        !k.key.startsWith("profile:") &&
-        !k.key.startsWith("progress:")
-    ),
+  const handleDelete = async () => {
+    if (!deleteDialog.key) return;
+
+    try {
+      const headers = {
+        "Content-Type": "application/json",
+      };
+      
+      // Only add Authorization header if we have a stored secret (production mode)
+      if (storedSecret) {
+        headers.Authorization = `Bearer ${storedSecret}`;
+      }
+
+      const response = await fetch("/api/admin/delete", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key: deleteDialog.key }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to delete");
+      }
+
+      toast.success("Deleted successfully");
+      setDeleteDialog({ open: false, key: null, name: null });
+      fetchKeys(); // Refresh the list
+    } catch (err) {
+      toast.error(err.message || "Failed to delete");
+      console.error(err);
+    }
   };
+
+  // Organize keys into profiles with their related data
+  const organizeData = () => {
+    const profilesMap = new Map();
+    const codesMap = new Map();
+    const progressMap = new Map();
+
+    // First pass: collect all data
+    keys.forEach((item) => {
+      if (item.key.startsWith("profile:")) {
+        const learnerId = item.key.replace("profile:", "");
+        profilesMap.set(learnerId, item.value);
+      } else if (item.key.startsWith("code:")) {
+        const code = item.key.replace("code:", "");
+        codesMap.set(code, item.value);
+      } else if (item.key.startsWith("progress:")) {
+        const learnerId = item.key.replace("progress:", "");
+        progressMap.set(learnerId, item.value);
+      }
+    });
+
+    // Build combined profiles table
+    const profilesData = [];
+    profilesMap.forEach((profile, learnerId) => {
+      const code = profile.code;
+      const progress = progressMap.get(learnerId);
+      const modulesCount = progress?.modules?.length || 0;
+      const entriesCount =
+        progress?.modules?.reduce(
+          (sum, m) =>
+            sum + m.lessons.reduce((s, l) => s + (l.entries?.length || 0), 0),
+          0
+        ) || 0;
+
+      profilesData.push({
+        learnerId,
+        name: profile.name || "No name",
+        code: profile.code,
+        createdAt: profile.createdAt,
+        modulesCount,
+        entriesCount,
+        progress,
+      });
+    });
+
+    return profilesData;
+  };
+
+  const profilesData = organizeData();
 
   // Show login form if not authenticated
   if (!isAuthenticated && !loading) {
@@ -151,116 +234,119 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-50 p-8">
       <Toaster />
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-black mb-2">KV Database Admin</h1>
-          <p className="text-slate-600 mb-4">
-            Total keys: {keys.length}
-          </p>
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-black mb-2">KV Database Admin</h1>
+            <p className="text-slate-600">
+              Total profiles: {profilesData.length}
+            </p>
+          </div>
           <Button onClick={fetchKeys} className="bg-black text-white">
             Refresh
           </Button>
         </div>
 
-        {/* Codes */}
-        {groupedKeys.codes.length > 0 && (
-          <Card className="p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4">Codes ({groupedKeys.codes.length})</h2>
-            <div className="space-y-2">
-              {groupedKeys.codes.map((item) => (
-                <div
-                  key={item.key}
-                  className="p-3 border rounded cursor-pointer hover:bg-gray-50"
-                  onClick={() => setSelectedKey(selectedKey === item.key ? null : item.key)}
-                >
-                  <div className="font-mono text-sm font-bold">{item.key}</div>
-                  {selectedKey === item.key && (
-                    <div className="mt-2 text-slate-600">
-                      Value: <span className="font-mono">{String(item.value)}</span>
-                    </div>
-                  )}
-                </div>
-              ))}
+        {/* Profiles Table */}
+        <Card className="p-6 mb-6">
+          <h2 className="text-xl font-bold mb-4">Learner Profiles</h2>
+          {profilesData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-3 font-semibold">Name</th>
+                    <th className="text-left p-3 font-semibold">Code</th>
+                    <th className="text-left p-3 font-semibold">Learner ID</th>
+                    <th className="text-left p-3 font-semibold">Modules</th>
+                    <th className="text-left p-3 font-semibold">Entries</th>
+                    <th className="text-left p-3 font-semibold">Created</th>
+                    <th className="text-left p-3 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {profilesData.map((profile) => (
+                    <tr key={profile.learnerId} className="border-b hover:bg-gray-50">
+                      <td className="p-3">{profile.name}</td>
+                      <td className="p-3 font-mono text-sm">{profile.code}</td>
+                      <td className="p-3 font-mono text-xs text-slate-500">
+                        {profile.learnerId.substring(0, 20)}...
+                      </td>
+                      <td className="p-3">{profile.modulesCount}</td>
+                      <td className="p-3">{profile.entriesCount}</td>
+                      <td className="p-3 text-sm text-slate-600">
+                        {profile.createdAt
+                          ? new Date(profile.createdAt).toLocaleDateString()
+                          : "N/A"}
+                      </td>
+                      <td className="p-3">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            setDeleteDialog({
+                              open: true,
+                              key: `profile:${profile.learnerId}`,
+                              name: profile.name,
+                            });
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </Card>
-        )}
+          ) : (
+            <p className="text-slate-500 text-center py-8">
+              No profiles found.
+            </p>
+          )}
+        </Card>
 
-        {/* Profiles */}
-        {groupedKeys.profiles.length > 0 && (
-          <Card className="p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4">Profiles ({groupedKeys.profiles.length})</h2>
-            <div className="space-y-2">
-              {groupedKeys.profiles.map((item) => (
-                <div
-                  key={item.key}
-                  className="p-3 border rounded cursor-pointer hover:bg-gray-50"
-                  onClick={() => setSelectedKey(selectedKey === item.key ? null : item.key)}
-                >
-                  <div className="font-mono text-sm font-bold">{item.key}</div>
-                  {selectedKey === item.key && (
-                    <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto">
-                      {JSON.stringify(item.value, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Progress */}
-        {groupedKeys.progress.length > 0 && (
-          <Card className="p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4">Progress ({groupedKeys.progress.length})</h2>
-            <div className="space-y-2">
-              {groupedKeys.progress.map((item) => (
-                <div
-                  key={item.key}
-                  className="p-3 border rounded cursor-pointer hover:bg-gray-50"
-                  onClick={() => setSelectedKey(selectedKey === item.key ? null : item.key)}
-                >
-                  <div className="font-mono text-sm font-bold">{item.key}</div>
-                  {selectedKey === item.key && (
-                    <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto max-h-96">
-                      {JSON.stringify(item.value, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Other Keys */}
-        {groupedKeys.other.length > 0 && (
-          <Card className="p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4">Other Keys ({groupedKeys.other.length})</h2>
-            <div className="space-y-2">
-              {groupedKeys.other.map((item) => (
-                <div
-                  key={item.key}
-                  className="p-3 border rounded cursor-pointer hover:bg-gray-50"
-                  onClick={() => setSelectedKey(selectedKey === item.key ? null : item.key)}
-                >
-                  <div className="font-mono text-sm font-bold">{item.key}</div>
-                  {selectedKey === item.key && (
-                    <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto">
-                      {JSON.stringify(item.value, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {keys.length === 0 && (
-          <Card className="p-8 text-center">
-            <p className="text-slate-600">No keys found in the database.</p>
-          </Card>
-        )}
+        {/* All Keys Table */}
+        
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog({ ...deleteDialog, open })
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the key: <strong>{deleteDialog.key}</strong>
+              {deleteDialog.name && (
+                <>
+                  <br />
+                  Profile: <strong>{deleteDialog.name}</strong>
+                </>
+              )}
+              <br />
+              <span className="text-red-600 font-semibold">
+                This action cannot be undone. Related data (code, progress) will also be deleted.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
-
